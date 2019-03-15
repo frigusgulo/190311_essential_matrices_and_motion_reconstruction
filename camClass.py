@@ -170,3 +170,6 @@ class camClass(Image):
 
 		P_1c = K_cam @ P_1
 		P_2c = K_cam @ P_2
+
+		#inliers_masked = # need u and v from the SIFT
+         	return P_1c, P_2c, u, v

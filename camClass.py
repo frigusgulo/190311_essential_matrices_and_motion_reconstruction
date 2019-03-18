@@ -5,6 +5,8 @@ import matplotlib.image as mpimg
 import scipy.optimize as so
 import cv2
 import piexif
+import sys
+from npl_toolkits.mplot3d import Axis3D
 
 class Image(object):
     def __init__(self, img, imggcp=[], realgcp=[],pose=None):
@@ -12,18 +14,19 @@ class Image(object):
         self.imagegcp = imggcp
         self.realgcp = realgcp
         self.pose = pose
-	self.f = image['Exif'][piexif.ExifIFD.FocalLengthIn35mmFilm]/36*w
-	self.h = plt.imread(img).shape[0]
-	self.w = plt.imread(img).shape[1]
-	self.d = plt.imread(img).shape[2]
+        self.f = image['Exif'][piexif.ExifIFD.FocalLengthIn35mmFilm]/36*w
+        self.h = plt.imread(img).shape[0]
+        self.w = plt.imread(img).shape[1]
+        self.d = plt.imread(img).shape[2]
 	
 class camClass(Image):
-    def __init__(self, foc_len, sensor_x, sensor_y, pose_guess,Kmat):
-        self.f = foc_len                           # Focal Length in Pixels
+    def __init__(self,pose_guess=None,Kmat=None):
+
         self.c = np.array([sensor_x,sensor_y])  # Sensor
         self.images = []
         self.pose_guess = pose_guess
-	self.Kmat = Kmat #camera matrix
+        self.Kmat = Kmat #camera matrix
+        self.pointCloud = []
     def add_images(self,image):
         image.pose = self.pose_guess  #initialize image with guess
         self.images.append(image) 
@@ -112,12 +115,20 @@ class camClass(Image):
         for i in range(len(self.images)):
             for j in range(len(self.images)):
                 if( i != j):
-                    self.images[i].realgcp = so.least_squares(residual_RWC, self.images[i].realgcp , method='lm',args=(self.images[i].pose, self.images[j].pose, self.images[i].imagegcp, self.images[j].imagegcp,self)).x        
-	def Essential_Mat():
-		if(len(images < 2)):
-			print("Not enough images")
-		I1 = images[0]
-		I2 = images[1]
+                    self.images[i].realgcp = so.least_squares(residual_RWC, self.images[i].realgcp , method='lm',args=(self.images[i].pose,                         self.images[j].pose, self.images[i].imagegcp, self.images[j].imagegcp,self)).x
+                    
+	def pointCloud():
+        	
+            def triangulate(P0,P1,x1,x2):
+                A = np.array([[P0[2,0]*x1[0] - P0[0,0], P0[2,1]*x1[0] - P0[0,1], P0[2,2]*x1[0] - P0[0,2], P0[2,3]*x1[0] - P0[0,3]],
+                [P0[2,0]*x1[1] - P0[1,0], P0[2,1]*x1[1] - P0[1,1], P0[2,2]*x1[1] - P0[1,2], P0[2,3]*x1[1] - P0[1,3]],
+                  [P1[2,0]*x2[0] - P1[0,0], P1[2,1]*x2[0] - P1[0,1], P1[2,2]*x2[0] - P1[0,2], P1[2,3]*x2[0] - P1[0,3]],
+                  [P1[2,0]*x2[1] - P1[1,0], P1[2,1]*x2[1] - P1[1,1], P1[2,2]*x2[1] - P1[1,2], P1[2,3]*x2[1] - P1[1,3]]])
+                    u,s,vt = np.linalg.svd(A)
+                return vt[-1]
+            
+        I1 = self.images[0]
+        I2 = self.images[1]
 		h,w,d = I1.shape
 		sift = cv2.xfeatures2d.SIFT_create()
 		kp1,des1 = sift.detectAndCompute(I1,None)
@@ -138,35 +149,49 @@ class camClass(Image):
     			u1.append(kp1[m.queryIdx].pt)
     			u2.append(kp2[m.trainIdx].pt)
     
-		u1 = np.array(u1)
+		u1 = np.array(u1)  #general coords
 		u2 = np.array(u2)
 
 		#Make homogeneous
 		u1 = np.c_[u1,np.ones(u1.shape[0])]
 		u2 = np.c_[u2,np.ones(u2.shape[0])cu = w//2
 		
-		cv = image.h//2
-        cu = image.w//2
+		cv = image[0].h/2
+        cu = image[0].w/2
 
 		K_cam = np.array([[f,0,cu],[0,f,cv],[0,0,1]])
 		K_inv = np.linalg.inv(K_cam)
-		x1 = u1 @ K_inv.T
+		x1 = u1 @ K_inv.T  #camera coords
 		x2 = u2 @ K_inv.T 
 
 		E, inliers = cv2.findEssentialMat(x1[:,:2],x2[:,:2],np.eye(3),method=cv2.RANSAC,threshold=1e-3)
 		inliers = inliers.ravel().astype(bool) 
 		n_in,R,t,_ = cv2.recoverPose(E,x1[inliers,:2],x2[inliers,:2])
 
-		P_1 = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0]])
-		P_2 = np.hstack((R,t))
-
-		return (P_1,P_2)
-
-	def triangulate(P0,P1,x1,x2):
-   
-    	A = np.array([[P0[2,0]*x1[0] - P0[0,0], P0[2,1]*x1[0] - P0[0,1], P0[2,2]*x1[0] - P0[0,2], P0[2,3]*x1[0] - P0[0,3]],
-                  [P0[2,0]*x1[1] - P0[1,0], P0[2,1]*x1[1] - P0[1,1], P0[2,2]*x1[1] - P0[1,2], P0[2,3]*x1[1] - P0[1,3]],
-                  [P1[2,0]*x2[0] - P1[0,0], P1[2,1]*x2[0] - P1[0,1], P1[2,2]*x2[0] - P1[0,2], P1[2,3]*x2[0] - P1[0,3]],
-                  [P1[2,0]*x2[1] - P1[1,0], P1[2,1]*x2[1] - P1[1,1], P1[2,2]*x2[1] - P1[1,2], P1[2,3]*x2[1] - P1[1,3]]])
-   		u,s,vt = np.linalg.svd(A)
-    	return vt[-1]
+		P0 = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0]])
+		P1 = np.hstack((R,t))
+        
+        for i in range(len(u2)):
+            self.pointcloud.append(triangulate(P0,P1,x1[i],x2[i]))   #appends to list of points in xyz coordinates
+                   
+		self.pointCloud = np.array(self.pointCloud)
+        self.pointCloud /= self.pointCloud[0][3]
+                   
+        def plotPointCloud():
+            %matplotlib notebook
+            fig = plt.figure()
+            ax = fig.add_subplot(111,projection='3D')
+            #for i in range(len(self.pointCloud)):
+            ax.plot(*self.pointCloud.T,'k.')
+	
+                   
+                   
+                   
+if __name__ == "__main__":
+  Image1 = Image(sys.argv[1])
+  Image2 = Image(sys.argv[2])
+  pointCloud = camClass()
+  pointCloud.add_images(Image1)
+  pointCloud.add_images(Image2)
+  pointCloud.pointCloud()
+  pointCloud.plotPointCloud()

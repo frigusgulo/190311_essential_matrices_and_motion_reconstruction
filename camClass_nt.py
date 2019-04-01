@@ -34,8 +34,7 @@ class camClass(Image):
     def add_images(self,image):
         #image.pose = self.pose_guess  #initialize image with guess
         self.images.append(image)
-    
-    '''
+
     def stitch_and_plot(im1,im2):
         I1 = self.images[0]
         I2 = self.images[1]
@@ -93,11 +92,10 @@ class camClass(Image):
         for i in range(len(x1)):
              ax.plot( (x1(i,0),x1(i,1)), (x2(i,0),x2(i,1)), pic)
         plt.show()
-        '''
 
     def genPointCloud(self):
         def triangulate(P0,P1,x1,x2):
-            '''This function returns the real-world coordinates (X,Y,X,W) of key points found in 2 images
+            '''X,Y,Z,W of the key points that are found in 2 images
                P0 and P1 are poses, x1 and x2 are SIFT key-points'''
             A = np.array([[P0[2,0]*x1[0] - P0[0,0], P0[2,1]*x1[0] - P0[0,1], P0[2,2]*x1[0] - P0[0,2], P0[2,3]*x1[0] - P0[0,3]],
                          [P0[2,0]*x1[1] - P0[1,0], P0[2,1]*x1[1] - P0[1,1], P0[2,2]*x1[1] - P0[1,2], P0[2,3]*x1[1] - P0[1,3]],
@@ -105,13 +103,11 @@ class camClass(Image):
                          [P1[2,0]*x2[1] - P1[1,0], P1[2,1]*x2[1] - P1[1,1], P1[2,2]*x2[1] - P1[1,2], P1[2,3]*x2[1] - P1[1,3]]])
             u,s,vt = np.linalg.svd(A)
             return vt[-1]
-        
-        # Read in images    
+            
         I1 = self.images[0]
         I2 = self.images[1]
         h,w,d,f = I1.h, I1.w, I1.d, I1.f
-
-        # Generate SIFT key-points
+	
         sift = cv2.xfeatures2d.SIFT_create()
         kp1,des1 = sift.detectAndCompute(I1.img, None)
         kp2,des2 = sift.detectAndCompute(I2.img, None)
@@ -133,7 +129,7 @@ class camClass(Image):
         u1g = np.array(u1)
         u2g = np.array(u2)
 
-	# Homogeneous Coordinates
+	# Make Homogeneous
         u1h = np.c_[u1g,np.ones(u1g.shape[0])]
         u2h = np.c_[u2g,np.ones(u2g.shape[0])]
 		
@@ -152,21 +148,25 @@ class camClass(Image):
         inliers = inliers.ravel().astype(bool) 
         n_in,R,t,_ = cv2.recoverPose(E,x1[inliers,:2],x2[inliers,:2])
 
-        # Filter out bad matches
+        print (x1.shape)
+
         x1 = x1[inliers==True]
         x2 = x2[inliers==True]
 
-        # Relative pose between two cameras
-        P0 = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0]]) # First camera has canonical rotation and t=0
+        print (x1.shape)
+
+        # Relative pose between two camperas
+        P0 = np.array([[1,0,0,0],[0,1,0,0],[0,0,1,0]])
         P1 = np.hstack((R,t))
         
-        # Find X,Y,Z,W for all SIFT Keypoints
+        # Find X,Y,Z for all SIFT Keypoints
         for i in range(len(x1)):
-            self.pointCloud.append(triangulate(P0,P1,x1[i],x2[i]))   # Appends to list of points in xyz coordinates
+            self.pointCloud.append(triangulate(P0,P1,x1[i],x2[i]))   #appends to list of points in xyz coordinates
 
         self.pointCloud = np.array(self.pointCloud)
-        self.pointCloud = self.pointCloud.T / self.pointCloud[:,3] # Divide everything by W 
-        self.pointCloud = self.pointCloud[:-1,:] # Drop the last column (W=1)
+        self.pointCloud = self.pointCloud.T / self.pointCloud[:,3]
+        self.pointCloud = self.pointCloud[:-1,:] 
+        print (self.pointCloud.shape)
         
     def plotPointCloud(self):
         #%matplotlib notebook
